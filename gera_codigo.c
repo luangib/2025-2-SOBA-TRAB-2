@@ -3,8 +3,8 @@
  *
  * Adaptação do código SBas (peqcomp) para LBS (gera_codigo)
  *
- * Aluno: [Nome_do_Aluno1] [Matricula] [Turma]
- * Aluno: [Nome_do_Aluno2] [Matricula] [Turma]
+ * Aluno: Luan Francisco Gibson Coutinho 2411167 3WB
+ * 
  */
 
 #include <stdio.h>
@@ -12,9 +12,9 @@
 #include <string.h>
 #include <ctype.h>
 
- // Definição do protótipo (assumindo gera_codigo.h não foi modificado)
+// Definição do protótipo (assumindo gera_codigo.h não foi modificado)
 typedef int (*funcp) (int x);
-void gera_codigo(FILE* f, unsigned char code[], funcp* entry);
+void gera_codigo (FILE *f, unsigned char code[], funcp *entry);
 
 
 // --- CONSTANTES E MACROS ---
@@ -23,7 +23,7 @@ void gera_codigo(FILE* f, unsigned char code[], funcp* entry);
 #define MAX_FUNCTIONS 64 
 // 5 variáveis locais (v0 a v4), 4 bytes cada = 20 bytes.
 // Alocamos 24 bytes na pilha para garantir alinhamento de 16 bytes (x64 ABI).
-#define LOCAL_VARS_SIZE 24 
+#define LOCAL_VARS_SIZE 0x18 // 24 decimal
 // Offset do parâmetro p0 na pilha. Salvo em -24(%rbp)
 #define P0_OFFSET -24 
 // Offset das variáveis locais v0 a v4 na pilha (4 bytes/var). v0: -4, v4: -20
@@ -32,36 +32,45 @@ void gera_codigo(FILE* f, unsigned char code[], funcp* entry);
 // --- ESTRUTURAS DE DADOS GLOBAIS ---
 // Tabela para armazenar o endereço de início de cada função LBS.
 // O índice é o número da função (0, 1, 2, ...)
-unsigned char* function_start_addrs[MAX_FUNCTIONS];
+unsigned char *function_start_addrs[MAX_FUNCTIONS];
 int function_count = 0; // Contador de funções lidas
 int pc = 0;             // Program Counter: índice atual no array code
 
 // --- PROTÓTIPOS DAS FUNÇÕES AUXILIARES ---
-void write_bytes(unsigned char codigo[], const unsigned char* bytes, int len);
+void write_bytes(unsigned char codigo[], const unsigned char *bytes, int len);
 void emit_prologue(unsigned char codigo[]);
 void emit_epilogue(unsigned char codigo[]);
 void mov_varpc_to_reg(unsigned char codigo[], int reg, char tipo, int index_or_const);
 void mov_reg_to_var(unsigned char codigo[], int reg, int v_index);
+// Função auxiliar para parsing de varpc (ex: "p0", "v1", "$10")
+void parse_varpc(const char *token, char *type_out, int *val_out);
 
 
 // --- IMPLEMENTAÇÃO PRINCIPAL ---
 
-void gera_codigo(FILE* f, unsigned char code[], funcp* entry) {
+void gera_codigo(FILE *f, unsigned char code[], funcp *entry) {
     char buf[256];
     function_count = 0;
     pc = 0;
 
-    // Estruturas de patching para JUMPS (zret) dentro da mesma função (não necessário para CALL)
-    // O zret sempre salta para o código de retorno no final do bloco atual.
-
+    // Inicializa a tabela de endereços de funções
+    for (int i = 0; i < MAX_FUNCTIONS; i++) {
+        function_start_addrs[i] = NULL;
+    }
+    
     while (fgets(buf, sizeof(buf), f)) {
-        char* p = buf;
+        char *p = buf;
         while (isspace((unsigned char)*p)) p++;
         if (*p == '\0' || *p == '\n' || *p == '/' || *p == '#') continue;
 
         // --- 1. function ---
         if (strncmp(p, "function", 8) == 0) {
             // Salva o endereço de início da nova função
+            if (function_count >= MAX_FUNCTIONS) {
+                fprintf(stderr, "Erro: Limite maximo de funcoes LBS excedido.\n");
+                *entry = NULL;
+                return;
+            }
             function_start_addrs[function_count++] = &code[pc];
             emit_prologue(code);
             continue;
@@ -69,206 +78,148 @@ void gera_codigo(FILE* f, unsigned char code[], funcp* entry) {
 
         // --- 2. end ---
         if (strncmp(p, "end", 3) == 0) {
-            // O `end` é apenas um marcador. O fluxo de controle deve terminar em `ret` ou `zret`.
             continue;
         }
 
         int v_dest;
         char varpc1_type = 0, varpc2_type = 0;
-        int val1, val2;
+        int val1 = 0, val2 = 0;
         char op = 0;
         int call_num;
-        char temp_str[10];
+        char token1_str[10], token2_str[10];
+        
+        // --- Operação Aritmética e Atribuição (v_dest = varpc1 op varpc2) ---
+        // O sscanf aqui pode casar com "v0 = call 0 p0" erroneamente (token1="call", op='0').
+        // Por isso, precisamos verificar se parse_varpc tem sucesso. Se falhar, NÃO executamos continue,
+        // para permitir que o fluxo caia no bloco de 'call' abaixo.
+        if (sscanf(p, "v%d = %s %c %s", &v_dest, token1_str, &op, token2_str) == 4) {
+            
+            // 1. ANÁLISE DOS OPERANDOS
+            parse_varpc(token1_str, &varpc1_type, &val1);
+            parse_varpc(token2_str, &varpc2_type, &val2);
 
-        // v0 = [p0|vX|$K] OP [p0|vX|$K] (Atribuição e Operação Aritmética)
-        // A lógica de parsing é complexa devido às combinações, tentaremos simplificar.
-        if (sscanf(p, "v%d = %s %c %s", &v_dest, temp_str, &op, buf) == 4) {
+            // Só processamos se ambos os operandos forem válidos (v, p, $)
+            if (varpc1_type != 0 && varpc2_type != 0) { 
 
-            // Simplificação do parsing para os operandos
-            // O primeiro operando (varpc1)
-            if (strcmp(temp_str, "p0") == 0) { varpc1_type = 'p'; val1 = 0; }
-            else if (temp_str[0] == 'v' && sscanf(temp_str, "v%d", &val1) == 1) { varpc1_type = 'v'; }
-            else if (temp_str[0] == '$' && sscanf(temp_str, "$%d", &val1) == 1) { varpc1_type = '$'; }
-            else { continue; } // Erro de parsing
+                // 2. TRADUÇÃO DA OPERAÇÃO
+                // Passo A: Mover varpc1 para %eax (o acumulador)
+                mov_varpc_to_reg(code, 0, varpc1_type, val1); // 0 = %eax
 
-            // O segundo operando (varpc2)
-            if (strcmp(buf, "p0") == 0) { varpc2_type = 'p'; val2 = 0; }
-            else if (buf[0] == 'v' && sscanf(buf, "v%d", &val2) == 1) { varpc2_type = 'v'; }
-            else if (buf[0] == '$' && sscanf(buf, "$%d", &val2) == 1) { varpc2_type = '$'; }
-            else { continue; } // Erro de parsing
+                // Passo B: Aplicar a operação (OPL varpc2, %eax)
+                if (varpc2_type == '$') {
+                    // Caso Imediato ($K)
+                    if (op == '+') code[pc++] = 0x05; // addl $const, %eax
+                    else if (op == '-') code[pc++] = 0x2d; // subl $const, %eax
+                    else if (op == '*') {
+                        code[pc++] = 0x69; code[pc++] = 0xc0; // imull $const, %eax, %eax
+                    }
+                    *(int*)(&code[pc]) = val2; pc += 4; 
+                } else {
+                    // Caso Memória (vX ou p0)
+                    unsigned char op_code = 0;
+                    if (op == '+') op_code = 0x03; // addl
+                    else if (op == '-') op_code = 0x2b; // subl
+                    else if (op == '*') op_code = 0x0f; // imull
 
-            // Tradução da Operação: v_dest = varpc1 op varpc2
+                    code[pc++] = op_code; 
+                    if (op == '*') code[pc++] = 0xaf; // imull precisa de 0xaf
 
-            // 1. Mover varpc1 para %eax (o primeiro operando)
-            mov_varpc_to_reg(code, 0, varpc1_type, val1);
-
-            // 2. Realizar a operação com o segundo operando (%eax op varpc2)
-            unsigned char op_code;
-            if (op == '+') op_code = 0x03; // addl
-            else if (op == '-') op_code = 0x2b; // subl
-            else if (op == '*') op_code = 0x0f; // imull (usaremos imul estendido, mas aqui simplifica)
-            else { continue; }
-
-            // Lógica simplificada: se varpc2 é variável ou p0, use R/M. Se for constante, use Imediato.
-            if (varpc2_type == 'v') {
-                // Op <varpc2>, %eax (ex: addl -4*(v2+1)(%rbp), %eax)
-                code[pc++] = op_code;
-                code[pc++] = 0x45;
-                code[pc++] = VAR_OFFSET(val2);
-            }
-            else if (varpc2_type == 'p') {
-                // Op p0, %eax (ex: addl -24(%rbp), %eax)
-                code[pc++] = op_code;
-                code[pc++] = 0x45;
-                code[pc++] = P0_OFFSET;
-            }
-            else if (varpc2_type == '$') {
-                // Op $const, %eax (ex: addl $10, %eax)
-                // Nota: Para -, o opcode correto seria subl $const, %eax (0x2D).
-                // Para simplificar e evitar múltiplos opcodes por operação, assumiremos que
-                // o valor já está em %eax e operaremos a partir dele.
-                if (op == '+') code[pc++] = 0x05; // addl $const, %eax
-                else if (op == '-') code[pc++] = 0x2d; // subl $const, %eax
-                else if (op == '*') {
-                    // imull $const, %eax (opcode 0x69 seguido de 0xC0 e o const)
-                    code[pc++] = 0x69; code[pc++] = 0xc0;
+                    if (varpc2_type == 'v') {
+                        code[pc++] = 0x45; 
+                        code[pc++] = VAR_OFFSET(val2);
+                    } else if (varpc2_type == 'p') {
+                        code[pc++] = 0x45; 
+                        code[pc++] = P0_OFFSET;
+                    }
                 }
-                *(int*)(&code[pc]) = val2; pc += 4;
-            }
 
-            // 3. Mover o resultado de %eax para v_dest
-            mov_reg_to_var(code, 0, v_dest);
-            continue;
+                // Passo C: Mover o resultado de %eax para v_dest
+                mov_reg_to_var(code, 0, v_dest);
+                
+                // Sucesso: instrução processada, vai para a próxima linha
+                continue;
+            }
+            // Se falhou no parse (ex: era um 'call'), NÃO fazemos continue, 
+            // deixando cair para a verificação de 'call' abaixo.
         }
 
-        // v0 = call num varpc (Chamada de Função)
-        // Tentaremos um sscanf mais simples para pegar o tipo e valor do varpc
-        // Ex: v0 = call 0 v1 | v0 = call 1 p0 | v0 = call 2 $10
-        if (sscanf(p, "v%d = call %d %s", &v_dest, &call_num, temp_str) == 3) {
+        // --- Chamada de Função (v_dest = call num varpc) ---
+        if (sscanf(p, "v%d = call %d %s", &v_dest, &call_num, token1_str) == 3) {
+            
+            // 1. Determinar o operando (varpc) e movê-lo para %edi
+            parse_varpc(token1_str, &varpc1_type, &val1);
+            if (varpc1_type == 0) { continue; }
+            
+            mov_varpc_to_reg(code, 3, varpc1_type, val1); // 3 = %edi
 
-            // 1. Determinar o operando (varpc) e movê-lo para %edi (registrador de 1º parâmetro)
-            if (strcmp(temp_str, "p0") == 0) { // varpc = p0
-                // movl -24(%rbp), %edi (carrega p0 que foi salvo no prólogo)
-                code[pc++] = 0x8b; code[pc++] = 0x7d; code[pc++] = P0_OFFSET;
-            }
-            else if (temp_str[0] == 'v' && sscanf(temp_str, "v%d", &val1) == 1) { // varpc = vX
-                // movl -4*(v+1)(%rbp), %edi
-                code[pc++] = 0x8b; code[pc++] = 0x7d; code[pc++] = VAR_OFFSET(val1);
-            }
-            else if (temp_str[0] == '$' && sscanf(temp_str, "$%d", &val1) == 1) { // varpc = $K
-                // movl $const, %edi
-                code[pc++] = 0xbf; *(int*)(&code[pc]) = val1; pc += 4;
-            }
-
-            // 2. CALL: Instrução de 5 bytes: 0xE8 (CALL rel32) + 4 bytes de offset
+            // 2. CALL: Instrução de 5 bytes: 0xE8 (CALL rel32)
             code[pc++] = 0xe8;
-
-            // O offset (endereço relativo) será calculado e preenchido aqui (patching)
-            // CALL para trás (funções anteriores): o endereço já é conhecido.
-            unsigned char* target_addr = function_start_addrs[call_num];
+            
+            // O offset será calculado aqui
+            unsigned char *target_addr = function_start_addrs[call_num];
             if (target_addr != NULL) {
-                int target_offset = (int)(target_addr - &code[pc]); // Deslocamento em relação ao endereço DA PRÓXIMA INSTRUÇÃO
+                // Cálculo do offset relativo
+                int target_offset = (int)(target_addr - &code[pc + 4]);
                 *(int*)(&code[pc]) = target_offset;
-            }
-            else {
-                // ERRO: Tentativa de chamar função não definida ou posterior (violando regra LBS)
+            } else {
                 fprintf(stderr, "Erro: Chamada para funcao LBS %d indefinida ou fora de ordem.", call_num);
                 *entry = NULL;
                 return;
             }
             pc += 4;
 
-            // 3. Mover o resultado de %eax (valor de retorno) para v_dest
-            mov_reg_to_var(code, 0, v_dest); // 0 = %eax
+            // 3. Mover o resultado de %eax para v_dest
+            mov_reg_to_var(code, 0, v_dest); 
             continue;
         }
 
-        // ret varpc (Retorno Incondicional)
-        if (sscanf(p, "ret %s", temp_str) == 1) {
-            // 1. Mover o valor de retorno (varpc) para %eax
-            if (strcmp(temp_str, "p0") == 0) { // varpc = p0
-                // movl -24(%rbp), %eax
-                code[pc++] = 0x8b; code[pc++] = 0x45; code[pc++] = P0_OFFSET;
-            }
-            else if (temp_str[0] == 'v' && sscanf(temp_str, "v%d", &val1) == 1) { // varpc = vX
-                mov_varpc_to_reg(code, 0, 'v', val1); // 0 = %eax
-            }
-            else if (temp_str[0] == '$' && sscanf(temp_str, "$%d", &val1) == 1) { // varpc = $K
-                mov_varpc_to_reg(code, 0, '$', val1); // 0 = %eax
-            }
 
-            // 2. EPÍLOGO: leave e ret
+        // --- Retorno Incondicional (ret varpc) ---
+        if (sscanf(p, "ret %s", token1_str) == 1) {
+            parse_varpc(token1_str, &varpc1_type, &val1);
+            if (varpc1_type == 0) { continue; }
+
+            mov_varpc_to_reg(code, 0, varpc1_type, val1); // 0 = %eax
             emit_epilogue(code);
             continue;
         }
 
-        // zret varpc1 varpc2 (Retorno Condicional: se varpc1 == 0, retorna varpc2)
-        if (sscanf(p, "zret %s %s", temp_str, buf) == 2) {
+        // --- Retorno Condicional (zret varpc1 varpc2) ---
+        if (sscanf(p, "zret %s %s", token1_str, token2_str) == 2) {
+            
+            parse_varpc(token1_str, &varpc1_type, &val1);
+            parse_varpc(token2_str, &varpc2_type, &val2);
+            if (varpc1_type == 0 || varpc2_type == 0) { continue; }
 
-            // 1. Mover varpc1 para %eax (ou outro reg, ex: %ecx) para comparação
-            char* varpc1_ptr = temp_str;
-            char* varpc2_ptr = buf;
+            // Mover varpc1 para %ecx para comparação
+            mov_varpc_to_reg(code, 1, varpc1_type, val1); 
 
-            // Mover varpc1 para %ecx (reg 1)
-            if (strcmp(varpc1_ptr, "p0") == 0) {
-                code[pc++] = 0x8b; code[pc++] = 0x4d; code[pc++] = P0_OFFSET; // movl -24(%rbp), %ecx
-            }
-            else if (varpc1_ptr[0] == 'v' && sscanf(varpc1_ptr, "v%d", &val1) == 1) {
-                code[pc++] = 0x8b; code[pc++] = 0x4d; code[pc++] = VAR_OFFSET(val1); // movl varX(%rbp), %ecx
-            }
-            else if (varpc1_ptr[0] == '$' && sscanf(varpc1_ptr, "$%d", &val1) == 1) {
-                code[pc++] = 0xb9; *(int*)(&code[pc]) = val1; pc += 4; // movl $const, %ecx
-            }
-
-            // 2. Comparar %ecx com 0
-            // testl %ecx, %ecx (seta flags)
+            // testl %ecx, %ecx
             code[pc++] = 0x85; code[pc++] = 0xc9;
+            
+            // JNZ (Jump if Not Zero) -> Pula o bloco de retorno
+            code[pc++] = 0x0f; code[pc++] = 0x85; 
+            
+            int jump_patch_pos = pc; 
+            pc += 4; 
 
-            // 3. Salto condicional: Se Z (Zero flag) estiver setado (== 0), pule
-            // je (jump if equal) - Instrução de 6 bytes: 0x0f 0x84 + 4 bytes de offset
-            code[pc++] = 0x0f; code[pc++] = 0x84;
-
-            int jump_patch_pos = pc; // Posição para preencher o offset do JE
-            pc += 4; // Avança 4 bytes
-
-            // 4. Se a condição NÃO for satisfeita (varpc1 != 0), o código segue aqui
-            // (Não há código, apenas continua a próxima instrução LBS)
-
-            // 5. Destino do JE (Código de Retorno): Se varpc1 == 0, execute daqui
-            int return_target_addr = pc;
-
-            // Mover varpc2 para %eax
-            if (strcmp(varpc2_ptr, "p0") == 0) {
-                code[pc++] = 0x8b; code[pc++] = 0x45; code[pc++] = P0_OFFSET; // movl -24(%rbp), %eax
-            }
-            else if (varpc2_ptr[0] == 'v' && sscanf(varpc2_ptr, "v%d", &val2) == 1) {
-                mov_varpc_to_reg(code, 0, 'v', val2); // 0 = %eax
-            }
-            else if (varpc2_ptr[0] == '$' && sscanf(varpc2_ptr, "$%d", &val2) == 1) {
-                mov_varpc_to_reg(code, 0, '$', val2); // 0 = %eax
-            }
-
-            // EPÍLOGO
+            // Código de Retorno
+            mov_varpc_to_reg(code, 0, varpc2_type, val2); 
             emit_epilogue(code);
-
-            // 6. Patching do Salto: Calcular e preencher o offset do JE
-            int relative_offset = return_target_addr - (jump_patch_pos + 4);
+            
+            // Patching do Salto
+            int relative_offset = pc - (jump_patch_pos + 4);
             *(int*)(&code[jump_patch_pos]) = relative_offset;
-
+            
             continue;
         }
 
-        // Se chegou aqui, a instrução não foi reconhecida.
-        fprintf(stderr, "Aviso: Instrucao LBS nao reconhecida ou mal formatada: %s", buf);
-        // Não é necessário abortar, mas é bom para debug
+        fprintf(stderr, "Aviso: Instrucao LBS nao reconhecida: %s", buf);
     }
-
-    // Armazena o endereço de início da ÚLTIMA função gerada
+    
     if (function_count > 0) {
-        // O endereço da última função é o (function_count - 1)-ésimo
         *entry = (funcp)function_start_addrs[function_count - 1];
-    }
-    else {
+    } else {
         *entry = NULL;
     }
 }
@@ -276,89 +227,75 @@ void gera_codigo(FILE* f, unsigned char code[], funcp* entry) {
 
 // --- IMPLEMENTAÇÃO DAS FUNÇÕES AUXILIARES ---
 
-// Escreve uma sequência de bytes no buffer de código
-void write_bytes(unsigned char codigo[], const unsigned char* bytes, int len) {
+void parse_varpc(const char *token, char *type_out, int *val_out) {
+    if (token == NULL || *token == '\0') {
+        *type_out = 0;
+        return;
+    }
+    if (strcmp(token, "p0") == 0) {
+        *type_out = 'p';
+        *val_out = 0; 
+    } else if (token[0] == 'v' && sscanf(token, "v%d", val_out) == 1) {
+        *type_out = 'v';
+    } else if (token[0] == '$' && sscanf(token, "$%d", val_out) == 1) {
+        *type_out = '$';
+    } else {
+        *type_out = 0; 
+    }
+}
+
+void write_bytes(unsigned char codigo[], const unsigned char *bytes, int len) {
     for (int i = 0; i < len; i++) {
         codigo[pc++] = bytes[i];
     }
 }
 
-// Emite o Prólogo da função LBS
 void emit_prologue(unsigned char codigo[]) {
-    // pushq %rbp
+    // pushq %rbp; movq %rsp, %rbp; subq $24, %rsp
     codigo[pc++] = 0x55;
-    // movq %rsp, %rbp
     codigo[pc++] = 0x48; codigo[pc++] = 0x89; codigo[pc++] = 0xe5;
-    // subq $24, %rsp (Aloca espaço para variáveis locais e alinhamento)
-    codigo[pc++] = 0x48; codigo[pc++] = 0x83; codigo[pc++] = 0xec; codigo[pc++] = LOCAL_VARS_SIZE;
-
-    // Salvar o p0 (%edi) na pilha em -24(%rbp)
-    // movl %edi, -24(%rbp) (0xE8 = -24)
-    codigo[pc++] = 0x89; codigo[pc++] = 0x7d; codigo[pc++] = 0xE8;
+    codigo[pc++] = 0x48; codigo[pc++] = 0x83; codigo[pc++] = 0xec; codigo[pc++] = LOCAL_VARS_SIZE; 
+    
+    // movl %edi, -24(%rbp) (Salva p0)
+    codigo[pc++] = 0x89; codigo[pc++] = 0x7d; codigo[pc++] = 0xE8; 
 }
 
-// Emite o Epílogo da função LBS
 void emit_epilogue(unsigned char codigo[]) {
-    // leave (movq %rbp, %rsp; popq %rbp)
-    codigo[pc++] = 0xc9;
-    // ret
-    codigo[pc++] = 0xc3;
+    // leave; ret
+    codigo[pc++] = 0xc9; 
+    codigo[pc++] = 0xc3; 
 }
 
-/**
- * Move um operando varpc (vX, p0, $K) para um registrador
- * @param reg 0: %eax, 1: %ecx, 2: %edx
- * @param tipo 'v' para variável, 'p' para p0, '$' para constante
- * @param index_or_const índice da variável (0-4) ou valor da constante
- */
 void mov_varpc_to_reg(unsigned char codigo[], int reg, char tipo, int index_or_const) {
-    // Registradores e opcodes base (movl reg, ...)
-    // %eax: 0xb8 (imediato), 0x8b 0x45 (r/m)
-    // %ecx: 0xb9 (imediato), 0x8b 0x4d (r/m)
-    // %edx: 0xba (imediato), 0x8b 0x55 (r/m)
+    
+    int mod_reg_map[] = {0x45, 0x4d, 0x55, 0x7d}; 
+    int mov_imm_map[] = {0xb8, 0xb9, 0xba, 0xbf}; // Correção para %edi (0xbf)
 
-    int mod_reg = 0; // Modificador para o byte ModR/M
-    int mov_imm_base = 0xb8; // movl $imm, %eax
-
-    if (reg == 0) { mod_reg = 0x45; } // %eax (-4(%rbp))
-    else if (reg == 1) { mod_reg = 0x4d; } // %ecx
-    else if (reg == 2) { mod_reg = 0x55; } // %edx
-
-    mov_imm_base += reg;
+    if (reg > 3) return; 
+    
+    int mod_reg = mod_reg_map[reg];
+    int mov_imm_opcode = mov_imm_map[reg];
 
     if (tipo == 'v') {
-        // movl -4*(v+1)(%rbp), %reg
-        codigo[pc++] = 0x8b;
-        codigo[pc++] = mod_reg;
+        codigo[pc++] = 0x8b; 
+        codigo[pc++] = mod_reg; 
         codigo[pc++] = VAR_OFFSET(index_or_const);
-    }
-    else if (tipo == '$') {
-        // movl $const, %reg
-        codigo[pc++] = mov_imm_base;
+    } else if (tipo == '$') {
+        codigo[pc++] = mov_imm_opcode; 
         *(int*)&codigo[pc] = index_or_const;
         pc += 4;
-    }
-    else if (tipo == 'p') {
-        // movl -24(%rbp), %reg (p0)
-        codigo[pc++] = 0x8b;
-        codigo[pc++] = mod_reg;
+    } else if (tipo == 'p') {
+        codigo[pc++] = 0x8b; 
+        codigo[pc++] = mod_reg; 
         codigo[pc++] = P0_OFFSET;
     }
 }
 
-// Move o conteúdo de um registrador para uma variável local vX
 void mov_reg_to_var(unsigned char codigo[], int reg, int v_index) {
-    // movl %reg, -4*(v_index+1)(%rbp)
-    // %eax (reg=0): 0x89 0x45
-    // %ecx (reg=1): 0x89 0x4d
-    // %edx (reg=2): 0x89 0x55
-
-    int mod_reg = 0; // Modificador para o byte ModR/M
-    if (reg == 0) { mod_reg = 0x45; }
-    else if (reg == 1) { mod_reg = 0x4d; }
-    else if (reg == 2) { mod_reg = 0x55; }
-
-    codigo[pc++] = 0x89;
-    codigo[pc++] = mod_reg;
+    int mod_reg_map[] = {0x45, 0x4d, 0x55}; 
+    if (reg > 2) return; 
+    int mod_reg = mod_reg_map[reg];
+    codigo[pc++] = 0x89; 
+    codigo[pc++] = mod_reg; 
     codigo[pc++] = VAR_OFFSET(v_index);
 }

@@ -1,0 +1,43 @@
+Relatório do Trabalho 2 - Gerador de Código LBS
+Alunos:
+
+Luan Francisco Gibson Coutinho 2411167
+
+
+O que funciona:
+Implementamos um gerador de código completo para a linguagem LBS, traduzindo para Assembly x64.
+O compilador suporta:
+
+Definição de múltiplas funções.
+
+Prólogo e Epílogo padrão C (usando %rbp e alocação de 24 bytes na pilha).
+
+Variáveis locais (v0-v4) e parâmetro (p0) armazenados na pilha.
+
+Operações aritméticas (+, -, *) com constantes, variáveis e parâmetros.
+
+Instrução de retorno incondicional (ret).
+
+Instrução de retorno condicional (zret), implementada com 'testl' e 'jnz' para pular o retorno se a condição falhar.
+
+Chamada de função (call) com suporte a recursão, usando endereçamento relativo (offset para instrução CALL 0xE8).
+
+Testes Realizados:
+
+Teste básico (t1.lbs): Função identidade f(x) = x + 1. Resultado OK.
+
+Operações Aritméticas (op_teste.lbs, mul_teste.lbs): Testamos soma, subtração e multiplicação com combinações de constantes e variáveis.
+
+Controle de Fluxo (zret_teste.lbs): Testamos o desvio condicional. Confirmamos que o salto ocorre apenas quando p0 == 0.
+
+Chamada de Função (call_teste.lbs): Uma função chamando outra definida anteriormente. Resultado OK.
+
+Recursão (fat.lbs): Cálculo do fatorial. O teste com entrada 5 retornou 120, confirmando o funcionamento da pilha e recursão.
+
+Dificuldades Encontradas:
+
+Ajuste do opcode para multiplicação (imull) com operando de memória (exigiu o prefixo 0x0f 0xaf).
+
+Lógica do zret: inicialmente usamos JE, o que invertia a lógica do fluxo. Corrigimos para JNZ para pular o bloco de retorno quando a condição é falsa.
+
+Parsing de 'call': o sscanf de operações aritméticas estava consumindo a linha do 'call'. Adicionamos uma validação extra no parsing.

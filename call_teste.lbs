@@ -1,0 +1,10 @@
+function
+v0 = p0 + $1    // Funcao 0: Retorna x + 1
+ret v0
+end
+
+function
+v0 = call 0 p0  // Funcao 1: Chama a Funcao 0 com o argumento p0
+v1 = v0 * $2    // Multiplica o resultado por 2
+ret v1
+end

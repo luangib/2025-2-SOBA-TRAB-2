@@ -1,0 +1,6 @@
+function
+v1 = p0 + $0    // v1 = x (Carrega p0 para v1, usando + $0 como atalho de atribuicao)
+v2 = v1 * $2    // v2 = x * 2 (Teste: Multiplicacao por Constante)
+v3 = v2 * v1    // v3 = (x * 2) * x (Teste: Multiplicacao por Variavel)
+ret v3
+end

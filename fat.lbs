@@ -1,0 +1,7 @@
+function
+zret p0 $1      // Se n == 0, retorna 1
+v0 = p0 - $1    // v0 = n - 1
+v1 = call 0 v0  // v1 = fat(n - 1)
+v2 = p0 * v1    // v2 = n * fat(n - 1)
+ret v2
+end
