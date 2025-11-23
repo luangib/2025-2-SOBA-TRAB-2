@@ -1,7 +1,6 @@
 /*
  * Gerador de Código x64 para a linguagem LBS (INF1018 - 2025.2)
  *
- * Adaptação do código SBas (peqcomp) para LBS (gera_codigo)
  *
  * Aluno: Luan Francisco Gibson Coutinho 2411167 3WB
  * 
