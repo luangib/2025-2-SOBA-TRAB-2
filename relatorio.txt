@@ -1,8 +1,6 @@
 Relatório do Trabalho 2 - Gerador de Código LBS
 Alunos:
-
 Luan Francisco Gibson Coutinho 2411167
-
 
 O que funciona:
 Implementamos um gerador de código completo para a linguagem LBS, traduzindo para Assembly x64.
@@ -24,15 +22,73 @@ Chamada de função (call) com suporte a recursão, usando endereçamento relati
 
 Testes Realizados:
 
-Teste básico (t1.lbs): Função identidade f(x) = x + 1. Resultado OK.
+Teste básico (t1.lbs):
 
-Operações Aritméticas (op_teste.lbs, mul_teste.lbs): Testamos soma, subtração e multiplicação com combinações de constantes e variáveis.
+Objetivo: Testar o acesso a parâmetro (p0), constantes e soma simples.
 
-Controle de Fluxo (zret_teste.lbs): Testamos o desvio condicional. Confirmamos que o salto ocorre apenas quando p0 == 0.
+Lógica: f(x) = x + 1.
 
-Chamada de Função (call_teste.lbs): Uma função chamando outra definida anteriormente. Resultado OK.
+Resultado: Com entrada 10, obtivemos 11. Sucesso.
 
-Recursão (fat.lbs): Cálculo do fatorial. O teste com entrada 5 retornou 120, confirmando o funcionamento da pilha e recursão.
+Operações Aritméticas (op_teste.lbs):
+
+Objetivo: Testar operações de soma e subtração combinadas.
+
+Lógica: f(x) = x + 5 - 2 = x + 3.
+
+Resultado: Com entrada 10, obtivemos 13. Sucesso.
+
+Multiplicação Variáveis (mul_teste.lbs):
+
+Objetivo: Testar multiplicação onde ambos operandos são variáveis (memória * memória).
+
+Lógica: f(x) = (x * 2) * x.
+
+Resultado: Com entrada 4, obtivemos 32. Sucesso.
+
+Multiplicação Mista (mul_teste_v0.lbs):
+
+Objetivo: Testar sequência mista de operações e o uso de múltiplos registradores.
+
+Lógica: f(x) = (x * 3) + 1.
+
+Resultado: Com entrada 4, obtivemos 13. Sucesso.
+
+Controle de Fluxo - Condição Verdadeira (zret_teste.lbs):
+
+Objetivo: Testar o desvio condicional quando a condição (x==0) é satisfeita.
+
+Resultado: Com entrada 0, o programa retornou 10. Sucesso.
+
+Controle de Fluxo - Condição Falsa (zret_teste.lbs):
+
+Objetivo: Testar se o desvio condicional é ignorado corretamente quando a condição é falsa.
+
+Resultado: Com entrada 5, o programa pulou o retorno condicional e retornou 50. Sucesso.
+
+Chamada de Função (call_teste.lbs):
+
+Objetivo: Testar chamada de função simples entre duas funções definidas no mesmo arquivo.
+
+Lógica: f(x) = x+1; g(x) = f(x) * 2.
+
+Resultado: Com entrada 10, obtivemos 22. Sucesso.
+
+Recursão (fat.lbs):
+
+Objetivo: Testar cálculo de fatorial recursivo. Verifica a preservação da pilha.
+
+Lógica: 5! = 120.
+
+Resultado: Com entrada 5, obtivemos 120. Sucesso.
+
+Soma dos Quadrados (sq_sum.lbs):
+
+Objetivo: Teste complexo com múltiplas funções, chamadas cruzadas e recursão simultânea.
+
+Lógica: 1^2 + 2^2 + 3^2.
+
+Resultado: Com entrada 3, obtivemos 14. Sucesso.
 
 Dificuldades Encontradas:
 
@@ -42,7 +98,8 @@ Lógica do zret: inicialmente usamos JE, o que invertia a lógica do fluxo. Corr
 
 Parsing de 'call': o sscanf de operações aritméticas estava consumindo a linha do 'call'. Adicionamos uma validação extra no parsing.
 
-
+========================================
+LOG DE EXECUÇÃO DOS TESTES
 
 @luangib ➜ /workspaces/2025-2-SOBA-TRAB-2 (main) $ #!/bin/bash
 
