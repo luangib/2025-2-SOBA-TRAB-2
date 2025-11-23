@@ -20,17 +20,35 @@ Instrução de retorno condicional (zret), implementada com 'testl' e 'jnz' para
 
 Chamada de função (call) com suporte a recursão, usando endereçamento relativo (offset para instrução CALL 0xE8).
 
-Testes Realizados:
 
+============================================================
+TESTES REALIZADOS
+
+===============
 Teste básico (t1.lbs):
+
+function
+v0 = p0 + $1
+ret v0
+end
 
 Objetivo: Testar o acesso a parâmetro (p0), constantes e soma simples.
 
 Lógica: f(x) = x + 1.
 
+
 Resultado: Com entrada 10, obtivemos 11. Sucesso.
 
+
+===============
 Operações Aritméticas (op_teste.lbs):
+
+function
+v1 = p0 + $0    // v1 = x (Carrega p0 para v1)
+v2 = v1 + $5    // v2 = x + 5
+v3 = v2 - $2    // v3 = (x + 5) - 2 = x + 3
+ret v3
+end
 
 Objetivo: Testar operações de soma e subtração combinadas.
 
@@ -38,7 +56,16 @@ Lógica: f(x) = x + 5 - 2 = x + 3.
 
 Resultado: Com entrada 10, obtivemos 13. Sucesso.
 
+
+===============
 Multiplicação Variáveis (mul_teste.lbs):
+
+function
+v1 = p0 + $0    // v1 = x (Carrega p0 para v1, usando + $0 como atalho de atribuicao)
+v2 = v1 * $2    // v2 = x * 2 (Teste: Multiplicacao por Constante)
+v3 = v2 * v1    // v3 = (x * 2) * x (Teste: Multiplicacao por Variavel)
+ret v3
+end
 
 Objetivo: Testar multiplicação onde ambos operandos são variáveis (memória * memória).
 
@@ -46,7 +73,17 @@ Lógica: f(x) = (x * 2) * x.
 
 Resultado: Com entrada 4, obtivemos 32. Sucesso.
 
+
+===============
 Multiplicação Mista (mul_teste_v0.lbs):
+
+function
+v0 = p0 + $0    // v0 = x (Copia p0 para v0)
+v1 = v0 * $3    // v1 = x * 3
+v2 = v1 + $1    // v2 = (x * 3) + 1
+v3 = v2 * $1    // v3 = v2 * 1 (Teste redundante para garantir fluxo)
+ret v3
+end
 
 Objetivo: Testar sequência mista de operações e o uso de múltiplos registradores.
 
@@ -54,19 +91,56 @@ Lógica: f(x) = (x * 3) + 1.
 
 Resultado: Com entrada 4, obtivemos 13. Sucesso.
 
+
+===============
 Controle de Fluxo - Condição Verdadeira (zret_teste.lbs):
+
+function
+v0 = p0 + $0  // Carrega p0 para v0
+
+// Se v0 == 0 (input == 0), retorna $10.
+zret v0 $10
+
+// Se a execucao chegou aqui, significa que v0 != 0
+ret $50
+end
 
 Objetivo: Testar o desvio condicional quando a condição (x==0) é satisfeita.
 
 Resultado: Com entrada 0, o programa retornou 10. Sucesso.
 
+
+===============
 Controle de Fluxo - Condição Falsa (zret_teste.lbs):
+
+function
+v0 = p0 + $0  // Carrega p0 para v0
+
+// Se v0 == 0 (input == 0), retorna $10.
+zret v0 $10
+
+// Se a execucao chegou aqui, significa que v0 != 0
+ret $50
+end
 
 Objetivo: Testar se o desvio condicional é ignorado corretamente quando a condição é falsa.
 
 Resultado: Com entrada 5, o programa pulou o retorno condicional e retornou 50. Sucesso.
 
+
+===============
 Chamada de Função (call_teste.lbs):
+
+function
+v0 = p0 + $1    // Funcao 0: Retorna x + 1
+ret v0
+end
+
+function
+v0 = call 0 p0  // Funcao 1: Chama a Funcao 0 com o argumento p0
+v1 = v0 * $2    // Multiplica o resultado por 2
+ret v1
+end
 
 Objetivo: Testar chamada de função simples entre duas funções definidas no mesmo arquivo.
 
@@ -74,7 +148,17 @@ Lógica: f(x) = x+1; g(x) = f(x) * 2.
 
 Resultado: Com entrada 10, obtivemos 22. Sucesso.
 
+
+===============
 Recursão (fat.lbs):
+
+function
+zret p0 $1      // Se n == 0, retorna 1
+v0 = p0 - $1    // v0 = n - 1
+v1 = call 0 v0  // v1 = fat(n - 1)
+v2 = p0 * v1    // v2 = n * fat(n - 1)
+ret v2
+end
 
 Objetivo: Testar cálculo de fatorial recursivo. Verifica a preservação da pilha.
 
@@ -82,7 +166,23 @@ Lógica: 5! = 120.
 
 Resultado: Com entrada 5, obtivemos 120. Sucesso.
 
+
+===============
 Soma dos Quadrados (sq_sum.lbs):
+
+function
+v0 = p0 * p0    // Funcao 0: Retorna o quadrado de p0
+ret v0
+end
+
+function
+zret p0 $0      // Funcao 1: Se p0 == 0, retorna 0 (Caso base)
+v0 = p0 - $1    // v0 = n - 1
+v1 = call 0 p0  // v1 = quadrado(n) (Chama a Funcao 0)
+v0 = call 1 v0  // v0 = soma_quadrados(n - 1) (Chamada Recursiva a Funcao 1)
+v0 = v0 + v1    // v0 = soma_quadrados(n-1) + quadrado(n)
+ret v0
+end
 
 Objetivo: Teste complexo com múltiplas funções, chamadas cruzadas e recursão simultânea.
 
@@ -90,7 +190,11 @@ Lógica: 1^2 + 2^2 + 3^2.
 
 Resultado: Com entrada 3, obtivemos 14. Sucesso.
 
+
+============================================================
 Dificuldades Encontradas:
+
+Obs.: Dificuldades não são partes não feitas e sim as que eu mais senti dificuldade
 
 Ajuste do opcode para multiplicação (imull) com operando de memória (exigiu o prefixo 0x0f 0xaf).
 
