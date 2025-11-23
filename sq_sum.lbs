@@ -1,0 +1,13 @@
+function
+v0 = p0 * p0    // Funcao 0: Retorna o quadrado de p0
+ret v0
+end
+
+function
+zret p0 $0      // Funcao 1: Se p0 == 0, retorna 0 (Caso base)
+v0 = p0 - $1    // v0 = n - 1
+v1 = call 0 p0  // v1 = quadrado(n) (Chama a Funcao 0)
+v0 = call 1 v0  // v0 = soma_quadrados(n - 1) (Chamada Recursiva a Funcao 1)
+v0 = v0 + v1    // v0 = soma_quadrados(n-1) + quadrado(n)
+ret v0
+end

@@ -41,3 +41,88 @@ Ajuste do opcode para multiplicação (imull) com operando de memória (exigiu o
 Lógica do zret: inicialmente usamos JE, o que invertia a lógica do fluxo. Corrigimos para JNZ para pular o bloco de retorno quando a condição é falsa.
 
 Parsing de 'call': o sscanf de operações aritméticas estava consumindo a linha do 'call'. Adicionamos uma validação extra no parsing.
+
+
+
+@luangib ➜ /workspaces/2025-2-SOBA-TRAB-2 (main) $ #!/bin/bash
+
+# --- 1. COMPILAÇÃO ---
+echo "========================================"
+echo "Compilando o gerador de código..."
+gcc -Wall -Wa,--execstack -o compilador testa_gera_codigo.c gera_codigo.c
+
+if [ $? -ne 0 ]; then
+    echo "Erro na compilação!"
+    exit 1
+fi
+echo "Fim dos testes."============================="" + n^2) ---"as e recursão simultânea..A.
+========================================
+Compilando o gerador de código...
+/usr/bin/ld: warning: /tmp/ccNtZTfd.o: requires executable stack (because the .note.GNU-stack section is executable)
+Compilação realizada com sucesso!
+========================================
+
+--- Teste 1: Básico (x + 1) ---
+Testando arquivo 't1.lbs' com entrada 10...
+Iniciando a geracao de codigo para 't1.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffdb6476df0
+Chamando a funcao LBS gerada com argumento: 10
+Resultado da execucao: 11
+
+--- Teste 2: Aritmética Soma/Sub (x + 3) ---
+Testando arquivo 'op_teste.lbs' com entrada 10...
+Iniciando a geracao de codigo para 'op_teste.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffe0366ecf0
+Chamando a funcao LBS gerada com argumento: 10
+Resultado da execucao: 13
+
+--- Teste 3: Multiplicação Variáveis (2 * x^2) ---
+Testando arquivo 'mul_teste.lbs' com entrada 4...
+Iniciando a geracao de codigo para 'mul_teste.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffc12939f90
+Chamando a funcao LBS gerada com argumento: 4
+Resultado da execucao: 32
+
+--- Teste 4: Multiplicação Mista (3x + 1) ---
+Testando arquivo 'mul_teste_v0.lbs' com entrada 4...
+Iniciando a geracao de codigo para 'mul_teste_v0.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffd5d91a450
+Chamando a funcao LBS gerada com argumento: 4
+Resultado da execucao: 13
+
+--- Teste 5: ZRET (Entrada 0 -> 10) ---
+Testando arquivo 'zret_teste.lbs' com entrada 0...
+Iniciando a geracao de codigo para 'zret_teste.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7fffa8a7dd20
+Chamando a funcao LBS gerada com argumento: 0
+Resultado da execucao: 10
+
+--- Teste 6: ZRET (Entrada 5 -> 50) ---
+Testando arquivo 'zret_teste.lbs' com entrada 5...
+Iniciando a geracao de codigo para 'zret_teste.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffc4392db30
+Chamando a funcao LBS gerada com argumento: 5
+Resultado da execucao: 50
+
+--- Teste 7: Chamada Simples (2 * (x+1)) ---
+Testando arquivo 'call_teste.lbs' com entrada 10...
+Iniciando a geracao de codigo para 'call_teste.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffd7796f77b
+Chamando a funcao LBS gerada com argumento: 10
+Resultado da execucao: 22
+bash: !: event not found
+Testando arquivo 'fat.lbs' com entrada 5...
+Iniciando a geracao de codigo para 'fat.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffc0362e2f0
+Chamando a funcao LBS gerada com argumento: 5
+Resultado da execucao: 120
+
+--- Teste 9: Soma dos Quadrados (1^2 + ... + n^2) ---
+Testando arquivo 'sq_sum.lbs' com entrada 3...
+Iniciando a geracao de codigo para 'sq_sum.lbs'...
+Codigo gerado com sucesso. Endereco de entrada: 0x7ffd8f837b7a
+Chamando a funcao LBS gerada com argumento: 3
+Resultado da execucao: 14
+
+========================================
+Fim dos testes.
